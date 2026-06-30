@@ -33,8 +33,8 @@ export default function AdminDashboard() {
         setUser(session.user)
         await fetchData()
       } else if (session?.user) {
-        // Not admin, redirect to main page
-        router.push('/')
+        // Not admin, redirect to admin login
+        router.push('/admin/login')
       } else {
         // No session, redirect to admin login
         router.push('/admin/login')
@@ -49,7 +49,7 @@ export default function AdminDashboard() {
         setUser(session.user)
         await fetchData()
       } else if (session?.user) {
-        router.push('/')
+        router.push('/admin/login')
       } else {
         setUser(null)
         router.push('/admin/login')
