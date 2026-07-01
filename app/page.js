@@ -29,9 +29,32 @@ export default function Home() {
     }
   }, [])
 
-  const handleIdentitySubmit = (e) => {
+  const registerUser = async (email, name) => {
+    const { data: existing } = await supabase
+      .from('users')
+      .select('id')
+      .eq('email', email)
+
+    if (existing && existing.length > 0) {
+      await supabase
+        .from('users')
+        .update({ full_name: name })
+        .eq('email', email)
+    } else {
+      await supabase
+        .from('users')
+        .insert({ email, full_name: name })
+    }
+  }
+
+  const handleIdentitySubmit = async (e) => {
     e.preventDefault()
     if (!identityEmail || !identityName) return
+    try {
+      await registerUser(identityEmail, identityName)
+    } catch (err) {
+      console.error('User registration error:', err)
+    }
     localStorage.setItem('userEmail', identityEmail)
     localStorage.setItem('userName', identityName)
     setUserEmail(identityEmail)
@@ -50,40 +73,18 @@ export default function Home() {
   }
 
   const trackConversion = async (count) => {
-    let userId
-
-    const { data: existing, error: selectError } = await supabase
+    const { data: existing } = await supabase
       .from('users')
-      .select('id, email')
+      .select('id')
       .eq('email', userEmail)
 
-    if (selectError) throw new Error(`User lookup failed: ${selectError.message}`)
+    if (!existing || existing.length === 0) return
 
-    if (existing && existing.length > 0) {
-      userId = existing[0].id
-      const { error: updateError } = await supabase
-        .from('users')
-        .update({ full_name: userName })
-        .eq('id', userId)
-      if (updateError) throw new Error(`User update failed: ${updateError.message}`)
-    } else {
-      const { data: inserted, error: insertError } = await supabase
-        .from('users')
-        .insert({ email: userEmail, full_name: userName })
-        .select('id')
+    const { error: convError } = await supabase
+      .from('conversions')
+      .insert({ user_id: existing[0].id, files_converted: count })
 
-      if (insertError) throw new Error(`User insert failed: ${insertError.message}`)
-      if (!inserted || inserted.length === 0) throw new Error('User insert returned no data')
-      userId = inserted[0].id
-    }
-
-    if (userId) {
-      const { error: convError } = await supabase
-        .from('conversions')
-        .insert({ user_id: userId, files_converted: count })
-
-      if (convError) throw new Error(`Conversion insert failed: ${convError.message}`)
-    }
+    if (convError) console.error('Conversion insert error:', convError)
   }
 
   const processFiles = async (files) => {
