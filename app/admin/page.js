@@ -2,22 +2,21 @@
 
 import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '../../lib/supabase'
-import { useRouter } from 'next/navigation'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, AreaChart, Area } from 'recharts'
 
 export default function AdminDashboard() {
-  const [user, setUser] = useState(null)
+  const [authorized, setAuthorized] = useState(false)
   const [loading, setLoading] = useState(true)
   const [conversions, setConversions] = useState([])
   const [users, setUsers] = useState([])
-  const [timeFrame, setTimeFrame] = useState('7d') // 7d, 30d, 90d, all, custom
+  const [timeFrame, setTimeFrame] = useState('7d')
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
-  const router = useRouter()
+  const [adminEmail, setAdminEmail] = useState('')
+  const [adminName, setAdminName] = useState('')
 
   const COLORS = ['#4F46E5', '#7C3AED', '#A855F7', '#D946EF', '#EC4899', '#F43F5E', '#F97316', '#EAB308']
 
-  // Initialize default dates for custom range
   useEffect(() => {
     const now = new Date()
     const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
@@ -26,40 +25,15 @@ export default function AdminDashboard() {
   }, [])
 
   useEffect(() => {
-    // First check for existing session
-    const init = async () => {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (session?.user && session.user.email === 'admin@fedex.com') {
-        setUser(session.user)
-        await fetchData()
-      } else if (session?.user) {
-        // Not admin, redirect to admin login
-        router.push('/admin/login')
-      } else {
-        // No session, redirect to admin login
-        router.push('/admin/login')
-      }
-      setLoading(false)
+    const email = localStorage.getItem('userEmail')
+    const name = localStorage.getItem('userName')
+    if (email === 'admin@fedex.com') {
+      setAdminEmail(email)
+      setAdminName(name || 'Admin')
+      setAuthorized(true)
+      fetchData()
     }
-    init()
-
-    // Listen for auth state changes
-    const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (session?.user && session.user.email === 'admin@fedex.com') {
-        setUser(session.user)
-        await fetchData()
-      } else if (session?.user) {
-        router.push('/admin/login')
-      } else {
-        setUser(null)
-        router.push('/admin/login')
-      }
-      setLoading(false)
-    })
-
-    return () => {
-      authListener?.subscription?.unsubscribe()
-    }
+    setLoading(false)
   }, [])
 
   const fetchData = async () => {
@@ -90,9 +64,10 @@ export default function AdminDashboard() {
     }
   }
 
-  const handleLogout = async () => {
-    await supabase.auth.signOut()
-    router.push('/admin/login')
+  const handleLogout = () => {
+    localStorage.removeItem('userEmail')
+    localStorage.removeItem('userName')
+    window.location.href = '/'
   }
 
   const filteredConversions = useMemo(() => {
@@ -176,6 +151,28 @@ export default function AdminDashboard() {
     )
   }
 
+  if (!authorized) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center p-4">
+        <div className="bg-white rounded-3xl shadow-xl border border-slate-200 p-8 max-w-md w-full text-center">
+          <div className="w-20 h-20 mx-auto mb-6 bg-red-100 rounded-full flex items-center justify-center">
+            <svg className="w-10 h-10 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m0 0v2m0-2h2m-2 0H10m9.364-7.364A9 9 0 1112 3a9 9 0 017.364 4.636z" />
+            </svg>
+          </div>
+          <h1 className="text-3xl font-extrabold text-slate-800 mb-4">Access Denied</h1>
+          <p className="text-slate-500 text-lg mb-8">Only admin@fedex.com can access this dashboard.</p>
+          <a
+            href="/"
+            className="inline-block px-8 py-4 bg-purple-600 text-white rounded-2xl font-bold hover:bg-purple-700 transition-all"
+          >
+            Back to Converter
+          </a>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <main className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
       {/* Header */}
@@ -194,17 +191,17 @@ export default function AdminDashboard() {
               </div>
             </div>
             <div className="flex items-center gap-4">
-              <button
-                onClick={() => router.push('/')}
+              <a
+                href="/"
                 className="px-6 py-3 bg-white/10 border border-white/20 rounded-2xl font-bold hover:bg-white/20 transition-all duration-300 backdrop-blur"
               >
                 Back to Converter
-              </button>
+              </a>
               <button
                 onClick={handleLogout}
                 className="px-6 py-3 bg-red-500/90 rounded-2xl font-bold hover:bg-red-600 transition-all duration-300 shadow-lg shadow-red-500/30"
               >
-                Logout
+                Switch User
               </button>
             </div>
           </div>

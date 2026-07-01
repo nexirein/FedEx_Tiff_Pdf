@@ -2,7 +2,6 @@
 
 import { useState, useRef, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
-import { useRouter } from 'next/navigation'
 
 export default function Home() {
   const [selectedFiles, setSelectedFiles] = useState([])
@@ -12,48 +11,72 @@ export default function Home() {
   const [status, setStatus] = useState('')
   const [progress, setProgress] = useState(0)
   const [errorMessage, setErrorMessage] = useState('')
-  const [user, setUser] = useState(null)
-  const [loading, setLoading] = useState(true)
+  const [userEmail, setUserEmail] = useState('')
+  const [userName, setUserName] = useState('')
+  const [showIdentityForm, setShowIdentityForm] = useState(true)
+  const [identityEmail, setIdentityEmail] = useState('')
+  const [identityName, setIdentityName] = useState('')
   const fileInputRef = useRef(null)
   const folderInputRef = useRef(null)
-  const router = useRouter()
 
   useEffect(() => {
-    // First check for existing session
-    const init = async () => {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (session?.user) {
-        setUser(session.user)
-      }
-      setLoading(false)
-    }
-    init()
-
-    // Listen for auth state changes
-    const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
-      if (session?.user) {
-        setUser(session.user)
-      } else {
-        setUser(null)
-      }
-      setLoading(false)
-    })
-
-    return () => {
-      authListener?.subscription?.unsubscribe()
+    const storedEmail = localStorage.getItem('userEmail')
+    const storedName = localStorage.getItem('userName')
+    if (storedEmail && storedName) {
+      setUserEmail(storedEmail)
+      setUserName(storedName)
+      setShowIdentityForm(false)
     }
   }, [])
 
-  const handleLogout = async () => {
-    await supabase.auth.signOut()
-    router.push('/login')
+  const handleIdentitySubmit = (e) => {
+    e.preventDefault()
+    if (!identityEmail || !identityName) return
+    localStorage.setItem('userEmail', identityEmail)
+    localStorage.setItem('userName', identityName)
+    setUserEmail(identityEmail)
+    setUserName(identityName)
+    setShowIdentityForm(false)
+  }
+
+  const handleChangeUser = () => {
+    localStorage.removeItem('userEmail')
+    localStorage.removeItem('userName')
+    setUserEmail('')
+    setUserName('')
+    setIdentityEmail('')
+    setIdentityName('')
+    setShowIdentityForm(true)
   }
 
   const trackConversion = async (count) => {
     try {
-      await supabase
-        .from('conversions')
-        .insert({ user_id: user.id, files_converted: count })
+      const { data: existingUsers } = await supabase
+        .from('users')
+        .select('id')
+        .eq('email', userEmail)
+
+      let userId
+      if (existingUsers && existingUsers.length > 0) {
+        userId = existingUsers[0].id
+        await supabase
+          .from('users')
+          .update({ full_name: userName })
+          .eq('email', userEmail)
+      } else {
+        const { data: newUser } = await supabase
+          .from('users')
+          .insert({ email: userEmail, full_name: userName })
+          .select('id')
+          .single()
+        if (newUser) userId = newUser.id
+      }
+
+      if (userId) {
+        await supabase
+          .from('conversions')
+          .insert({ user_id: userId, files_converted: count })
+      }
     } catch (error) {
       console.error('Error tracking conversion:', error)
     }
@@ -221,20 +244,54 @@ export default function Home() {
     if (folderInputRef.current) folderInputRef.current.value = ''
   }
 
-  if (loading) {
+  if (showIdentityForm) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-16 w-16 border-4 border-purple-600 border-t-transparent mx-auto mb-4"></div>
-          <p className="text-xl text-slate-700">Loading...</p>
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center p-4">
+        <div className="bg-white rounded-3xl shadow-xl border border-slate-200 p-8 max-w-md w-full">
+          <div className="mb-8 text-center">
+            <img 
+              src="/fedex-logo-local.png" 
+              alt="FedEx Logo" 
+              className="h-14 mx-auto mb-6" 
+            />
+            <h1 className="text-3xl font-extrabold text-slate-800">TIFF to PDF Converter</h1>
+            <p className="text-slate-500 mt-3 text-lg">Enter your details to get started</p>
+          </div>
+
+          <form onSubmit={handleIdentitySubmit} className="space-y-6">
+            <div>
+              <label className="block text-sm font-bold text-slate-700 mb-3">Full Name</label>
+              <input
+                type="text"
+                value={identityName}
+                onChange={(e) => setIdentityName(e.target.value)}
+                required
+                className="w-full px-5 py-4 rounded-2xl border-2 border-slate-200 focus:border-purple-500 focus:ring-4 focus:ring-purple-100 outline-none transition-all text-lg"
+                placeholder="John Doe"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-bold text-slate-700 mb-3">Email Address</label>
+              <input
+                type="email"
+                value={identityEmail}
+                onChange={(e) => setIdentityEmail(e.target.value)}
+                required
+                className="w-full px-5 py-4 rounded-2xl border-2 border-slate-200 focus:border-purple-500 focus:ring-4 focus:ring-purple-100 outline-none transition-all text-lg"
+                placeholder="you@example.com"
+              />
+            </div>
+
+            <button
+              type="submit"
+              className="w-full py-4 px-6 rounded-2xl font-extrabold text-white text-lg shadow-xl transition-all duration-300 bg-gradient-to-r from-orange-500 via-orange-600 to-red-500 hover:from-orange-600 hover:via-orange-700 hover:to-red-600"
+            >
+              Start Converting
+            </button>
+          </form>
         </div>
       </div>
     )
-  }
-
-  if (!user) {
-    router.push('/login')
-    return null
   }
 
   return (
@@ -254,20 +311,27 @@ export default function Home() {
               </div>
             </div>
             <div className="flex items-center gap-4">
-              {user.email === 'admin@fedex.com' && (
-                <button
-                  onClick={() => router.push('/admin')}
+              {userEmail === 'admin@fedex.com' && (
+                <a
+                  href="/admin"
                   className="px-4 py-2 bg-white/20 border border-white/30 rounded-xl font-semibold hover:bg-white/30 transition-all"
                 >
                   Admin Dashboard
-                </button>
+                </a>
               )}
-              <button
-                onClick={handleLogout}
-                className="px-4 py-2 bg-red-500 rounded-xl font-semibold hover:bg-red-600 transition-all"
-              >
-                Logout
-              </button>
+              <div className="flex items-center gap-3 px-4 py-2 bg-white/10 rounded-xl">
+                <div className="w-8 h-8 rounded-full bg-purple-500 flex items-center justify-center text-white font-bold text-sm">
+                  {userName.charAt(0).toUpperCase()}
+                </div>
+                <span className="text-sm font-medium">{userName}</span>
+                <button
+                  onClick={handleChangeUser}
+                  className="text-xs text-purple-200 hover:text-white ml-2"
+                  title="Switch user"
+                >
+                  ✕
+                </button>
+              </div>
             </div>
           </div>
         </div>
