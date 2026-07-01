@@ -47,9 +47,12 @@ export default function Home() {
     }
   }
 
+  const [registering, setRegistering] = useState(false)
+
   const handleIdentitySubmit = async (e) => {
     e.preventDefault()
     if (!identityEmail || !identityName) return
+    setRegistering(true)
     try {
       await registerUser(identityEmail, identityName)
     } catch (err) {
@@ -293,9 +296,20 @@ export default function Home() {
 
             <button
               type="submit"
-              className="w-full py-4 px-6 rounded-2xl font-extrabold text-white text-lg shadow-xl transition-all duration-300 bg-gradient-to-r from-orange-500 via-orange-600 to-red-500 hover:from-orange-600 hover:via-orange-700 hover:to-red-600"
+              disabled={registering}
+              className="w-full py-4 px-6 rounded-2xl font-extrabold text-white text-lg shadow-xl transition-all duration-300 bg-gradient-to-r from-orange-500 via-orange-600 to-red-500 hover:from-orange-600 hover:via-orange-700 hover:to-red-600 disabled:bg-slate-400 disabled:cursor-not-allowed"
             >
-              Start Converting
+              {registering ? (
+                <div className="flex items-center justify-center gap-3">
+                  <svg className="w-6 h-6 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                  </svg>
+                  Setting up...
+                </div>
+              ) : (
+                'Start Converting'
+              )}
             </button>
           </form>
         </div>
