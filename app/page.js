@@ -51,31 +51,44 @@ export default function Home() {
 
   const trackConversion = async (count) => {
     try {
-      const { data: existingUsers } = await supabase
+      let userId
+
+      const { data: existing } = await supabase
         .from('users')
         .select('id')
         .eq('email', userEmail)
+        .maybeSingle()
 
-      let userId
-      if (existingUsers && existingUsers.length > 0) {
-        userId = existingUsers[0].id
+      if (existing) {
+        userId = existing.id
         await supabase
           .from('users')
           .update({ full_name: userName })
-          .eq('email', userEmail)
+          .eq('id', userId)
       } else {
-        const { data: newUser } = await supabase
+        const { data: inserted } = await supabase
           .from('users')
           .insert({ email: userEmail, full_name: userName })
           .select('id')
-          .single()
-        if (newUser) userId = newUser.id
+
+        if (inserted && inserted.length > 0) {
+          userId = inserted[0].id
+        } else {
+          const { data: retry } = await supabase
+            .from('users')
+            .select('id')
+            .eq('email', userEmail)
+            .maybeSingle()
+          if (retry) userId = retry.id
+        }
       }
 
       if (userId) {
-        await supabase
+        const { error: convError } = await supabase
           .from('conversions')
           .insert({ user_id: userId, files_converted: count })
+
+        if (convError) console.error('Conversion insert error:', convError)
       }
     } catch (error) {
       console.error('Error tracking conversion:', error)
