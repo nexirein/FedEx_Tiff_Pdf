@@ -50,48 +50,39 @@ export default function Home() {
   }
 
   const trackConversion = async (count) => {
-    try {
-      let userId
+    let userId
 
-      const { data: existing } = await supabase
+    const { data: existing, error: selectError } = await supabase
+      .from('users')
+      .select('id, email')
+      .eq('email', userEmail)
+
+    if (selectError) throw new Error(`User lookup failed: ${selectError.message}`)
+
+    if (existing && existing.length > 0) {
+      userId = existing[0].id
+      const { error: updateError } = await supabase
         .from('users')
+        .update({ full_name: userName })
+        .eq('id', userId)
+      if (updateError) throw new Error(`User update failed: ${updateError.message}`)
+    } else {
+      const { data: inserted, error: insertError } = await supabase
+        .from('users')
+        .insert({ email: userEmail, full_name: userName })
         .select('id')
-        .eq('email', userEmail)
-        .maybeSingle()
 
-      if (existing) {
-        userId = existing.id
-        await supabase
-          .from('users')
-          .update({ full_name: userName })
-          .eq('id', userId)
-      } else {
-        const { data: inserted } = await supabase
-          .from('users')
-          .insert({ email: userEmail, full_name: userName })
-          .select('id')
+      if (insertError) throw new Error(`User insert failed: ${insertError.message}`)
+      if (!inserted || inserted.length === 0) throw new Error('User insert returned no data')
+      userId = inserted[0].id
+    }
 
-        if (inserted && inserted.length > 0) {
-          userId = inserted[0].id
-        } else {
-          const { data: retry } = await supabase
-            .from('users')
-            .select('id')
-            .eq('email', userEmail)
-            .maybeSingle()
-          if (retry) userId = retry.id
-        }
-      }
+    if (userId) {
+      const { error: convError } = await supabase
+        .from('conversions')
+        .insert({ user_id: userId, files_converted: count })
 
-      if (userId) {
-        const { error: convError } = await supabase
-          .from('conversions')
-          .insert({ user_id: userId, files_converted: count })
-
-        if (convError) console.error('Conversion insert error:', convError)
-      }
-    } catch (error) {
-      console.error('Error tracking conversion:', error)
+      if (convError) throw new Error(`Conversion insert failed: ${convError.message}`)
     }
   }
 
@@ -128,8 +119,12 @@ export default function Home() {
       setConvertedFiles(converted)
       setStatus('All conversions complete!')
       setProgress(100)
-      
-      await trackConversion(files.length)
+
+      try {
+        await trackConversion(files.length)
+      } catch (trackErr) {
+        console.error('Tracking error (non-fatal):', trackErr)
+      }
 
       if (files.length === 1) {
         setStatus('Downloading PDF...')
