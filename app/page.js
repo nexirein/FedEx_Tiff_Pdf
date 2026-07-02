@@ -14,6 +14,7 @@ export default function Home() {
   const [status, setStatus] = useState('')
   const [progress, setProgress] = useState(0)
   const [errorMessage, setErrorMessage] = useState('')
+  const [largeBatchWarning, setLargeBatchWarning] = useState('')
   const [userEmail, setUserEmail] = useState('')
   const [userName, setUserName] = useState('')
   const [showIdentityForm, setShowIdentityForm] = useState(true)
@@ -102,67 +103,78 @@ export default function Home() {
     setFailedFiles([])
 
     const total = files.length
-    const converted = []
-    const failed = []
-    const results = []
-    let completed = 0
+    const allConverted = []
+    const allFailed = []
+    const allResults = []
+    const BATCH_SIZE = 25
 
-    const queue = files.map((file, index) => ({ file, index }))
+    for (let batchStart = 0; batchStart < total; batchStart += BATCH_SIZE) {
+      const batchEnd = Math.min(batchStart + BATCH_SIZE, total)
+      const batchFiles = files.slice(batchStart, batchEnd)
+      const batchConverted = []
+      const batchFailed = []
+      let completed = 0
 
-    const processOne = async () => {
-      while (queue.length > 0) {
-        const item = queue.shift()
-        if (!item) return
-        const { file, index } = item
+      const queue = batchFiles.map((file, i) => ({ file, index: batchStart + i }))
 
-        results[index] = { name: file.name, status: 'converting' }
+      const processOne = async () => {
+        while (queue.length > 0) {
+          const item = queue.shift()
+          if (!item) return
+          const { file, index } = item
 
-        try {
-          const pdfBytes = await tiffToPdf(file)
-          const blob = new Blob([pdfBytes], { type: 'application/pdf' })
-          const url = URL.createObjectURL(blob)
-          const pdfName = file.name.replace(/\.(tiff|tif)$/i, '.pdf')
+          allResults[index] = { name: file.name, status: 'converting' }
 
-          converted.push({ name: pdfName, url, blob })
-          results[index] = { name: file.name, status: 'success', pdfName }
-        } catch (err) {
-          failed.push({ name: file.name, error: err.message })
-          results[index] = { name: file.name, status: 'error', error: err.message }
+          try {
+            const pdfBytes = await tiffToPdf(file)
+            const blob = new Blob([pdfBytes], { type: 'application/pdf' })
+            const url = URL.createObjectURL(blob)
+            const pdfName = file.name.replace(/\.(tiff|tif)$/i, '.pdf')
+
+            batchConverted.push({ name: pdfName, url, blob })
+            allResults[index] = { name: file.name, status: 'success', pdfName }
+          } catch (err) {
+            batchFailed.push({ name: file.name, error: err.message })
+            allResults[index] = { name: file.name, status: 'error', error: err.message }
+          }
+
+          completed++
+          setStatus(`Converting ${batchStart + completed}/${total}`)
+          setProgress(Math.round(((batchStart + completed) / total) * 100))
+          setConversionResults([...allResults])
+          setConvertedFiles([...allConverted, ...batchConverted])
+          setFailedFiles([...allFailed, ...batchFailed])
         }
-
-        completed++
-        setStatus(`Converting ${completed}/${total}`)
-        setProgress(Math.round((completed / total) * 100))
-        setConversionResults([...results])
-        setConvertedFiles([...converted])
-        setFailedFiles([...failed])
       }
-    }
 
-    const workers = Array(Math.min(concurrency, total)).fill(null).map(() => processOne())
-    await Promise.all(workers)
+      const workers = Array(Math.min(concurrency, batchFiles.length)).fill(null).map(() => processOne())
+      await Promise.all(workers)
+
+      allConverted.push(...batchConverted)
+      allFailed.push(...batchFailed)
+    }
 
     setConverting(false)
 
-    if (converted.length > 0) {
-      setStatus(`${converted.length} of ${total} converted successfully`)
+    if (allConverted.length > 0) {
+      setStatus(`${allConverted.length} of ${total} converted successfully`)
       setProgress(100)
       try {
-        await trackConversion(converted.length)
+        await trackConversion(allConverted.length)
       } catch (trackErr) {
         console.error('Tracking error (non-fatal):', trackErr)
       }
     }
 
-    if (failed.length > 0 && converted.length === 0) {
+    if (allFailed.length > 0 && allConverted.length === 0) {
       setStatus('All conversions failed')
-      setErrorMessage(`${failed.length} file(s) could not be converted. Check the error details below.`)
-    } else if (failed.length > 0) {
-      setStatus(`${converted.length} of ${total} converted successfully`)
+      setErrorMessage(`${allFailed.length} file(s) could not be converted. Check the error details below.`)
+    } else if (allFailed.length > 0) {
+      setStatus(`${allConverted.length} of ${total} converted successfully`)
     }
 
-    if (total === 1 && converted.length === 1) {
-      downloadIndividual(converted[0])
+    if (total === 1 && allConverted.length === 1) {
+      downloadIndividual(allConverted[0])
     }
   }
 
@@ -228,9 +240,13 @@ export default function Home() {
     } else if (tiffFiles.length === 0) {
       setSelectedFiles([])
     } else {
+      if (tiffFiles.length > 100) {
+        setLargeBatchWarning(`Large batch detected: ${tiffFiles.length} files. Processing in batches of 25 to manage memory. Close other tabs to free resources.`)
+      } else {
+        setLargeBatchWarning('')
+      }
       setSelectedFiles(tiffFiles)
       setSourceName(detectedSourceName || 'converted')
-      setErrorMessage('')
     }
   }
 
@@ -249,6 +265,7 @@ export default function Home() {
     a.download = `${sourceName}_PDFs.zip`
     a.click()
     URL.revokeObjectURL(url)
+    files.forEach(f => URL.revokeObjectURL(f.url))
   }
 
   const downloadIndividual = (file) => {
@@ -275,6 +292,7 @@ export default function Home() {
     setStatus('')
     setProgress(0)
     setErrorMessage('')
+    setLargeBatchWarning('')
     if (fileInputRef.current) fileInputRef.current.value = ''
     if (folderInputRef.current) folderInputRef.current.value = ''
   }
@@ -431,6 +449,14 @@ export default function Home() {
               </div>
             </div>
 
+            {largeBatchWarning && (
+              <div className="mb-4 p-4 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-3">
+                <svg className="w-6 h-6 text-amber-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4.5c-.77-.833-2.694-.833-3.464 0L3.34 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                </svg>
+                <p className="text-amber-700 font-medium">{largeBatchWarning}</p>
+              </div>
+            )}
             {errorMessage && (
               <div className="mb-8 p-4 bg-red-50 border border-red-200 rounded-xl flex items-start gap-3">
                 <svg className="w-6 h-6 text-red-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
