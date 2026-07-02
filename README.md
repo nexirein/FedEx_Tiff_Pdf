@@ -145,6 +145,59 @@ Open [http://localhost:3000](http://localhost:3000) to see the app!
 
 ---
 
+## Technical Architecture
+
+### Conversion Pipeline (Client-Side)
+
+All TIFF-to-PDF conversion runs in the browser with zero server uploads:
+
+```
+TIFF file → utif.decode() → RGBA pixel data → Canvas API → toBlob('image/jpeg') → pdf-lib embedJpg() → PDF
+```
+
+1. **utif** — decodes TIFF (multi-page, Group4 Fax, LZW, etc.) into raw RGBA pixel arrays
+2. **Canvas API** — renders pixels to an offscreen `<canvas>`, then exports as JPEG blob
+3. **pdf-lib** — embeds the JPEG into a new PDF document, one page per TIFF page
+
+JPEG at quality 0.92 is used as the intermediate format because browser `canvas.toBlob('image/jpeg')` is hardware-accelerated (GPU) and significantly faster than PNG encoding.
+
+### Batch Processing & Concurrency
+
+| Parameter | Value | Why |
+|-----------|-------|-----|
+| Batch size | 25 files | Limits peak memory; results update after each batch |
+| Workers per batch | 4 concurrent | Overlaps canvas processing without saturating CPU |
+| Memory per worker | ~24 MB | One A4-sized canvas (2000×3000 RGBA) |
+
+```
+Batch 1 (files 1-25) ─┬─ Worker 1 ── file 1 ── file 5 ── ...
+                      ├─ Worker 2 ── file 2 ── file 6 ── ...
+                      ├─ Worker 3 ── file 3 ── file 7 ── ...
+                      └─ Worker 4 ── file 4 ── file 8 ── ...
+                      ↓ await Promise.all(workers)
+Batch 2 (files 26-50) ── repeat ──→
+```
+
+Canvas memory is freed by the garbage collector between files. Blob URLs are revoked after ZIP download via `URL.revokeObjectURL()`.
+
+### Why No Server-Side Conversion
+
+- **No upload bottleneck** — 200 files × 2 MB = 400 MB never leaves the browser
+- **No cold starts** — Vercel serverless functions are not invoked per file
+- **No CPU throttling** — Vercel Hobby plan limits CPU; browser uses local hardware
+- **Instant start** — conversion begins immediately, no network round-trip
+
+The `/api/convert` endpoint is preserved as a fallback but is not called by the frontend. Deploying to Vercel is purely serving static Next.js output — no serverless execution is required for conversion.
+
+### Large Batch Handling
+
+- Selecting >100 files shows an amber warning banner (non-blocking)
+- Processing in batches of 25 prevents memory exhaustion
+- Partial downloads are available if some files fail
+- `URL.revokeObjectURL()` is called after ZIP download to release blob memory
+
+---
+
 ## Deployment to Vercel
 1. Push your code to GitHub/GitLab/Bitbucket
 2. Go to [vercel.com](https://vercel.com), sign in, and import your project
