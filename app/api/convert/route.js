@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import sharp from 'sharp'
+import { PDFDocument } from 'pdf-lib'
 
 export async function POST(request) {
   try {
@@ -11,9 +12,31 @@ export async function POST(request) {
     }
 
     const buffer = Buffer.from(await file.arrayBuffer())
-    const pdfBuffer = await sharp(buffer).pdf().toBuffer()
+    const metadata = await sharp(buffer).metadata()
+    const numPages = metadata.pages || 1
 
-    return new NextResponse(pdfBuffer, {
+    const pdfDoc = await PDFDocument.create()
+
+    for (let i = 0; i < numPages; i++) {
+      const jpgBuffer = await sharp(buffer, { page: i })
+        .jpeg({ quality: 90 })
+        .toBuffer()
+
+      const jpgImage = await pdfDoc.embedJpg(jpgBuffer)
+      const { width, height } = jpgImage.scale(1)
+
+      const page = pdfDoc.addPage([width, height])
+      page.drawImage(jpgImage, {
+        x: 0,
+        y: 0,
+        width,
+        height,
+      })
+    }
+
+    const pdfBytes = await pdfDoc.save()
+
+    return new NextResponse(pdfBytes, {
       headers: {
         'Content-Type': 'application/pdf',
         'Content-Disposition': `attachment; filename="${file.name.replace(/\.(tiff|tif)$/i, '.pdf')}"`,
@@ -21,9 +44,9 @@ export async function POST(request) {
     })
   } catch (error) {
     console.error('Conversion error:', error)
-    return NextResponse.json(
-      { error: 'Failed to convert file' },
-      { status: 500 }
+    return new NextResponse(
+      JSON.stringify({ error: 'Failed to convert file' }),
+      { status: 500, headers: { 'Content-Type': 'application/json' } }
     )
   }
 }
