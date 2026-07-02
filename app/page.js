@@ -92,56 +92,68 @@ export default function Home() {
     if (convError) console.error('Conversion insert error:', convError)
   }
 
-  const processFiles = async (files) => {
+  const processFiles = async (files, concurrency = 4) => {
     setConverting(true)
     setStatus('Starting conversion...')
     setProgress(0)
     setErrorMessage('')
     setConvertedFiles([])
     setFailedFiles([])
+
+    const total = files.length
     const converted = []
     const failed = []
     const results = []
+    let completed = 0
 
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i]
-      setStatus(`Converting ${i + 1}/${files.length}: ${file.name}`)
-      setProgress(Math.round(((i + 1) / files.length) * 100))
+    const queue = files.map((file, index) => ({ file, index }))
 
-      results[i] = { name: file.name, status: 'converting' }
-      setConversionResults([...results])
+    const processOne = async () => {
+      while (queue.length > 0) {
+        const item = queue.shift()
+        if (!item) return
+        const { file, index } = item
 
-      try {
-        const formData = new FormData()
-        formData.append('file', file)
+        results[index] = { name: file.name, status: 'converting' }
 
-        const res = await fetch('/api/convert', {
-          method: 'POST',
-          body: formData,
-        })
+        try {
+          const formData = new FormData()
+          formData.append('file', file)
 
-        if (!res.ok) throw new Error(res.statusText || 'Conversion failed')
+          const res = await fetch('/api/convert', {
+            method: 'POST',
+            body: formData,
+          })
 
-        const blob = await res.blob()
-        const url = URL.createObjectURL(blob)
-        const pdfName = file.name.replace(/\.(tiff|tif)$/i, '.pdf')
+          if (!res.ok) throw new Error(res.statusText || 'Conversion failed')
 
-        converted.push({ name: pdfName, url, blob })
-        results[i] = { name: file.name, status: 'success', pdfName }
-      } catch (err) {
-        failed.push({ name: file.name, error: err.message })
-        results[i] = { name: file.name, status: 'error', error: err.message }
+          const blob = await res.blob()
+          const url = URL.createObjectURL(blob)
+          const pdfName = file.name.replace(/\.(tiff|tif)$/i, '.pdf')
+
+          converted.push({ name: pdfName, url, blob })
+          results[index] = { name: file.name, status: 'success', pdfName }
+        } catch (err) {
+          failed.push({ name: file.name, error: err.message })
+          results[index] = { name: file.name, status: 'error', error: err.message }
+        }
+
+        completed++
+        setStatus(`Converting ${completed}/${total}`)
+        setProgress(Math.round((completed / total) * 100))
+        setConversionResults([...results])
+        setConvertedFiles([...converted])
+        setFailedFiles([...failed])
       }
-
-      setConversionResults([...results])
-      setConvertedFiles([...converted])
-      setFailedFiles([...failed])
     }
+
+    const workers = Array(Math.min(concurrency, total)).fill(null).map(() => processOne())
+    await Promise.all(workers)
 
     setConverting(false)
 
     if (converted.length > 0) {
-      setStatus(`${converted.length} of ${files.length} converted successfully`)
+      setStatus(`${converted.length} of ${total} converted successfully`)
       setProgress(100)
       try {
         await trackConversion(converted.length)
@@ -154,10 +166,10 @@ export default function Home() {
       setStatus('All conversions failed')
       setErrorMessage(`${failed.length} file(s) could not be converted. Check the error details below.`)
     } else if (failed.length > 0) {
-      setStatus(`${converted.length} of ${files.length} converted successfully`)
+      setStatus(`${converted.length} of ${total} converted successfully`)
     }
 
-    if (files.length === 1 && converted.length === 1) {
+    if (total === 1 && converted.length === 1) {
       downloadIndividual(converted[0])
     }
   }
