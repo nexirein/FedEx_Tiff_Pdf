@@ -143,7 +143,6 @@ export default function Home() {
     if (converted.length > 0) {
       setStatus(`${converted.length} of ${files.length} converted successfully`)
       setProgress(100)
-
       try {
         await trackConversion(converted.length)
       } catch (trackErr) {
