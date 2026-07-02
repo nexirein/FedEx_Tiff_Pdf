@@ -7,15 +7,17 @@ Team members were fetching invoices from ACCS (internal software) in bulk, but t
 A modern web application for converting TIFF files to PDF, featuring:
 - Unified upload for TIFF files, entire folders, or ZIP files containing TIFFs
 - Automatic single-file (PDF) or multi-file (ZIP of PDFs) downloads
-- User authentication with Supabase magic links
+- User authentication with Supabase
 - Admin dashboard for tracking conversion analytics
+- Client-side conversion — files never leave your browser
+- Parallel batch processing with live per-file status
 - Beautiful, easy-to-use interface
 
 ## Tech Stack
 - **Frontend**: Next.js 14 (React), Tailwind CSS
-- **Backend**: Next.js API Routes
 - **Database & Auth**: Supabase
-- **File Handling**: JSZip, sharp, pdf-lib
+- **File Handling**: JSZip, pdf-lib, utif
+- **Conversion**: Browser Canvas API (zero server uploads)
 
 ---
 
@@ -124,6 +126,8 @@ Open [http://localhost:3000](http://localhost:3000) to see the app!
 ### For Regular Users
 - Sign up with full name and email
 - Upload TIFF files, entire folders, or ZIP files
+- **Client-side conversion** — TIFFs are decoded and converted in your browser using Canvas API. No files are uploaded to any server.
+- **Parallel batch processing** — multiple files are converted concurrently (4 at a time) for maximum speed
 - Error-tolerant batch conversion — processing continues even if some files fail
 - Per-file live status during conversion (converting ✓ / error ✗)
 - Partial download — download successfully converted files even when others fail
@@ -149,3 +153,5 @@ Open [http://localhost:3000](http://localhost:3000) to see the app!
    - `NEXT_PUBLIC_SUPABASE_URL`
    - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
 5. Deploy! 🚀
+
+> **Note**: Conversion runs entirely client-side in the browser, so Vercel serverless timeouts and CPU limits don't affect conversion speed. The `/api/convert` endpoint exists as a fallback but is not used by the frontend.
