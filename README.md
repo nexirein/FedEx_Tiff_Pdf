@@ -131,7 +131,7 @@ Open [http://localhost:3000](http://localhost:3000) to see the app!
 - Error-tolerant batch conversion — processing continues even if some files fail
 - Per-file live status during conversion (converting ✓ / error ✗)
 - Partial download — download successfully converted files even when others fail
-- Failed files are flagged with error details in the results summary
+- Failed files displayed in a separate "Failed Files" section at the top with filename and error message — no scrolling required
 - Automatic conversion and download
 - Simple, clean interface
 

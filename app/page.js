@@ -618,47 +618,61 @@ export default function Home() {
                   </div>
                 )}
 
-                <div className="max-h-96 overflow-y-auto space-y-3">
-                  {convertedFiles.map((file, idx) => (
-                    <div
-                      key={`ok-${idx}`}
-                      className="flex items-center justify-between gap-4 px-5 py-4 bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-2xl"
-                    >
-                      <div className="flex items-center gap-4 min-w-0 flex-1">
-                        <div className="p-3 bg-green-100 rounded-xl flex-shrink-0">
-                          <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
-                          </svg>
-                        </div>
-                        <span className="text-base text-slate-700 truncate font-semibold">{file.name}</span>
-                      </div>
-                      <button
-                        onClick={() => downloadIndividual(file)}
-                        className="p-3 text-purple-600 hover:text-purple-700 hover:bg-purple-100 rounded-xl transition-all flex-shrink-0"
-                        title="Download"
-                      >
-                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                        </svg>
-                      </button>
-                    </div>
-                  ))}
-                  {failedFiles.map((file, idx) => (
-                    <div
-                      key={`err-${idx}`}
-                      className="flex items-center gap-4 px-5 py-4 bg-gradient-to-r from-red-50 to-rose-50 border border-red-200 rounded-2xl"
-                    >
-                      <div className="p-3 bg-red-100 rounded-xl flex-shrink-0">
-                        <svg className="w-5 h-5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
-                        </svg>
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="text-base text-slate-700 truncate font-semibold">{file.name}</p>
-                        <p className="text-sm text-red-600 truncate mt-0.5">{file.error}</p>
+                <div className="space-y-3">
+                  {failedFiles.length > 0 && (
+                    <div>
+                      <p className="text-sm font-bold text-red-700 uppercase tracking-wider mb-3">Failed Files</p>
+                      <div className="max-h-48 overflow-y-auto space-y-2">
+                        {failedFiles.map((file, idx) => (
+                          <div
+                            key={`err-${idx}`}
+                            className="flex items-center gap-4 px-5 py-4 bg-gradient-to-r from-red-50 to-rose-50 border border-red-200 rounded-2xl"
+                          >
+                            <div className="p-3 bg-red-100 rounded-xl flex-shrink-0">
+                              <svg className="w-5 h-5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                              </svg>
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <p className="text-base text-slate-700 truncate font-semibold">{file.name}</p>
+                              <p className="text-sm text-red-600 truncate mt-0.5">{file.error}</p>
+                            </div>
+                          </div>
+                        ))}
                       </div>
                     </div>
-                  ))}
+                  )}
+                  {convertedFiles.length > 0 && (
+                    <div>
+                      <p className="text-sm font-bold text-green-700 uppercase tracking-wider mb-3">Converted Files</p>
+                      <div className="max-h-48 overflow-y-auto space-y-2">
+                        {convertedFiles.map((file, idx) => (
+                          <div
+                            key={`ok-${idx}`}
+                            className="flex items-center justify-between gap-4 px-5 py-4 bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-2xl"
+                          >
+                            <div className="flex items-center gap-4 min-w-0 flex-1">
+                              <div className="p-3 bg-green-100 rounded-xl flex-shrink-0">
+                                <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                                </svg>
+                              </div>
+                              <span className="text-base text-slate-700 truncate font-semibold">{file.name}</span>
+                            </div>
+                            <button
+                              onClick={() => downloadIndividual(file)}
+                              className="p-3 text-purple-600 hover:text-purple-700 hover:bg-purple-100 rounded-xl transition-all flex-shrink-0"
+                              title="Download"
+                            >
+                              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                              </svg>
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
