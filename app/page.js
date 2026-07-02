@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
+import { tiffToPdf } from '../lib/convert'
 
 export default function Home() {
   const [selectedFiles, setSelectedFiles] = useState([])
@@ -117,17 +118,8 @@ export default function Home() {
         results[index] = { name: file.name, status: 'converting' }
 
         try {
-          const formData = new FormData()
-          formData.append('file', file)
-
-          const res = await fetch('/api/convert', {
-            method: 'POST',
-            body: formData,
-          })
-
-          if (!res.ok) throw new Error(res.statusText || 'Conversion failed')
-
-          const blob = await res.blob()
+          const pdfBytes = await tiffToPdf(file)
+          const blob = new Blob([pdfBytes], { type: 'application/pdf' })
           const url = URL.createObjectURL(blob)
           const pdfName = file.name.replace(/\.(tiff|tif)$/i, '.pdf')
 
