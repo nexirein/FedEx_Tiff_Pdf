@@ -59,6 +59,7 @@ function validateRow(cells) {
   const mawbRaw = cell(cells, COL.MAWB_NO)
   const awb = cell(cells, COL.AWB)
   const companyName = cell(cells, COL.COMPANY_NAME)
+  const pcsCode = cell(cells, COL.PCS_CODE)
   const pcsRaw = cell(cells, COL.PCS)
   const wtRaw = cell(cells, COL.WT_KG)
   const org = cell(cells, COL.ORG)
@@ -102,6 +103,7 @@ function validateRow(cells) {
       companyName,
       pieces: pcsNum,
       weight: wtNum.toFixed(2),
+      pcsCode,
       origin: org,
       destination: dest,
       value: formatValue(valueRaw),
