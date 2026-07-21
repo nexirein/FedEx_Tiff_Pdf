@@ -2,48 +2,46 @@
 
 import { useState, useRef, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
-import { parseMawbCell, generateArrivalNoticePdf } from '../../lib/arrivalNotice'
+import { generateUbondConsolPdf } from '../../lib/ubondConsol'
 import NavTabs from '../../components/NavTabs'
 
 const COL = {
-  DATE: 0,
-  MAWB_NO: 1,
-  AWB: 2,
-  COMPANY_NAME: 3,
-  PCS_CODE: 4,
-  PCS: 5,
-  WT_KG: 6,
-  ORG: 7,
-  DEST: 8,
-  CHWT_KG: 9,
-  VALUE: 10,
-  CONTENTS: 11,
+  AGENT: 0,
+  LOC: 1,
+  DATE: 2,
+  AWB: 3,
+  CONSIGNEE: 4,
+  BSO: 5,
+  FREIGHT: 6,
+  CURRENCY: 7,
+  END_RESULT: 8,
+  DATA_TYPE: 9,
+  MODE: 10,
+  PIN_CODE: 11,
+  REMARKS: 12,
+  BROKER: 13,
+  CONTACT: 14,
+  EMAIL: 15,
+  DUTY_BILL: 16,
+  VALUE: 17,
+  PIECE_QTY: 18,
+  KILO_WGT: 19,
+  AD_CODE: 20,
+  INSTRUCTION_CD: 21,
+  COMMIT_DATE: 22,
+  ACCOUNT: 23,
+  SQL_CUSTOMER: 24,
+  PRIMARY_CEP: 25,
+  SECONDARY_CEP: 26,
 }
 
 function sanitizeFileName(name) {
   return String(name).replace(/[\\/:*?"<>|]/g, '_').trim() || 'unnamed'
 }
 
-const MONTH_ABBR = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-
-// Excel date cells come through as a raw serial day number. Converting that to a JS Date object
-// (e.g. via xlsx's cellDates option) and reading it with getDate()/getUTCDate() is unreliable for
-// fractional-hour zones like IST (+5:30) — Excel's own date-to-serial rounding leaves the
-// resulting Date a few ms before midnight, which can read back as the previous day. Parsing the
-// serial directly with SheetJS's own date-code parser sidesteps JS Date entirely and is exact.
-function formatExcelDate(v, XLSX) {
-  if (typeof v === 'number') {
-    const dc = XLSX.SSF.parse_date_code(v)
-    if (dc) return `${String(dc.d).padStart(2, '0')}-${MONTH_ABBR[dc.m - 1]}-${String(dc.y).slice(-2)}`
-  }
-  return String(v ?? '').trim()
-}
-
 function cell(cells, idx) {
   const v = cells[idx]
   if (v === undefined || v === null || v === '') return ''
-  // Plain Number#toString() never switches to scientific notation below 1e21, unlike
-  // Excel's own "General" cell format — this avoids values like AWB numbers rendering as "8.73598E+11".
   if (typeof v === 'number') return v.toString().trim()
   return String(v).trim()
 }
@@ -56,63 +54,48 @@ function formatValue(raw) {
 
 function validateRow(cells) {
   const date = cell(cells, COL.DATE)
-  const mawbRaw = cell(cells, COL.MAWB_NO)
   const awb = cell(cells, COL.AWB)
-  const companyName = cell(cells, COL.COMPANY_NAME)
-  const pcsCode = cell(cells, COL.PCS_CODE)
-  const pcsRaw = cell(cells, COL.PCS)
-  const wtRaw = cell(cells, COL.WT_KG)
-  const org = cell(cells, COL.ORG)
-  const dest = cell(cells, COL.DEST)
+  const consigneeName = cell(cells, COL.CONSIGNEE)
+  const freightRaw = cell(cells, COL.FREIGHT)
+  const currency = cell(cells, COL.CURRENCY)
   const valueRaw = cell(cells, COL.VALUE)
-  const contents = cell(cells, COL.CONTENTS)
+  const pieceQtyRaw = cell(cells, COL.PIECE_QTY)
+  const kiloWgtRaw = cell(cells, COL.KILO_WGT)
+  const commitDate = cell(cells, COL.COMMIT_DATE)
 
-  // awb is surfaced alongside the reason (not embedded in it) so the caller can build a single
-  // "Row N (AWB: ...)" label without duplicating it inside the error text.
   if (!date) return { error: 'missing Date', awb }
+  if (!awb) return { error: 'missing AWB Numbers', awb }
+  if (!consigneeName) return { error: 'missing Consignee Name', awb }
 
-  // "MAWB No." holds a composite cell like "MAWB-023 02961092 IGM- 3088962 Flight- FX5279t Dt - 04-07-2026"
-  // — parseMawbCell() extracts the Master AWB number, IGM, Flight and Flight Date from it.
-  const parsed = parseMawbCell(mawbRaw)
-  if (!parsed) return { error: `could not parse "MAWB No." ("${mawbRaw || 'empty'}")`, awb }
+  const pcsNum = Number(pieceQtyRaw)
+  if (!pieceQtyRaw || Number.isNaN(pcsNum) || pcsNum <= 0) return { error: `invalid PieceQty ("${pieceQtyRaw}")`, awb }
 
-  // The Excel "AWB" column is the shipment's actual AWB — used verbatim on the PDF and as the filename.
-  if (!awb) return { error: 'missing AWB', awb }
-  if (!companyName) return { error: 'missing Company Name', awb }
+  const wtNum = Number(kiloWgtRaw)
+  if (!kiloWgtRaw || Number.isNaN(wtNum) || wtNum <= 0) return { error: `invalid KiloWgt ("${kiloWgtRaw}")`, awb }
 
-  const pcsNum = Number(pcsRaw)
-  if (!pcsRaw || Number.isNaN(pcsNum) || pcsNum <= 0) return { error: `invalid Pcs ("${pcsRaw}")`, awb }
+  const valueNum = Number(valueRaw)
+  if (!valueRaw || Number.isNaN(valueNum)) return { error: `invalid Value ("${valueRaw}")`, awb }
 
-  const wtNum = Number(wtRaw)
-  if (!wtRaw || Number.isNaN(wtNum) || wtNum <= 0) return { error: `invalid WT(KG) ("${wtRaw}")`, awb }
-
-  if (!org) return { error: 'missing ORG', awb }
-  if (!dest) return { error: 'missing DEST', awb }
-  if (!valueRaw) return { error: 'missing VALUE', awb }
-  if (!contents) return { error: 'missing Contents', awb }
+  const freightNum = Number(freightRaw)
+  if (!freightRaw || Number.isNaN(freightNum)) return { error: `invalid Freight ("${freightRaw}")`, awb }
 
   return {
     row: {
       awbFileName: sanitizeFileName(awb),
       awbNo: awb,
       date,
-      mawbNo: parsed.awbMaster,
-      igm: parsed.igm,
-      flight: parsed.flight,
-      flightDate: parsed.flightDate,
-      companyName,
+      consigneeName,
       pieces: pcsNum,
       weight: wtNum.toFixed(2),
-      pcsCode,
-      origin: org,
-      destination: dest,
       value: formatValue(valueRaw),
-      contents,
+      freight: formatValue(freightRaw),
+      currency: currency || 'INR',
+      commitDate: commitDate || '',
     },
   }
 }
 
-export default function ArrivalNotice() {
+export default function UbondConsol() {
   const [validRows, setValidRows] = useState([])
   const [invalidRows, setInvalidRows] = useState([])
   const [showFormat, setShowFormat] = useState(false)
@@ -184,7 +167,7 @@ export default function ArrivalNotice() {
     setShowIdentityForm(true)
   }
 
-  const trackAnConversion = async (rowsProcessed, rowsFailed) => {
+  const trackUbondConversion = async (rowsProcessed, rowsFailed) => {
     const { data: existing } = await supabase
       .from('users')
       .select('id')
@@ -193,10 +176,10 @@ export default function ArrivalNotice() {
     if (!existing || existing.length === 0) return
 
     const { error: convError } = await supabase
-      .from('an_conversions')
+      .from('uc_conversions')
       .insert({ user_id: existing[0].id, rows_processed: rowsProcessed, rows_failed: rowsFailed })
 
-    if (convError) console.error('AN conversion insert error:', convError)
+    if (convError) console.error('UC conversion insert error:', convError)
   }
 
   const reset = () => {
@@ -224,9 +207,6 @@ export default function ArrivalNotice() {
     try {
       const XLSX = await import('xlsx')
       const arrayBuffer = await file.arrayBuffer()
-      // raw:true reads underlying values instead of Excel's own display text — "General" format
-      // renders long numbers like AWB numbers in scientific notation (e.g. "8.73598E+11"), and date
-      // cells come through as their raw serial day number, both of which we format ourselves below.
       const workbook = XLSX.read(arrayBuffer, { type: 'array' })
       const sheet = workbook.Sheets[workbook.SheetNames[0]]
       const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true, defval: '' })
@@ -236,7 +216,7 @@ export default function ArrivalNotice() {
         .filter((r) => r.some((v) => String(v).trim() !== ''))
         .map((cells) => {
           const copy = [...cells]
-          copy[COL.DATE] = formatExcelDate(copy[COL.DATE], XLSX)
+          copy[COL.DATE] = String(copy[COL.DATE] ?? '').trim()
           return copy
         })
 
@@ -303,7 +283,7 @@ export default function ArrivalNotice() {
           allResults[index] = { name: `${row.awbFileName}.pdf`, status: 'generating' }
 
           try {
-            const pdfBytes = await generateArrivalNoticePdf(row)
+            const pdfBytes = await generateUbondConsolPdf(row)
             const blob = new Blob([pdfBytes], { type: 'application/pdf' })
             const url = URL.createObjectURL(blob)
             const pdfName = `${row.awbFileName}.pdf`
@@ -337,7 +317,7 @@ export default function ArrivalNotice() {
       setStatus(`${allGenerated.length} of ${total} PDFs generated successfully`)
       setProgress(100)
       try {
-        await trackAnConversion(allGenerated.length, allFailed.length)
+        await trackUbondConversion(allGenerated.length, allFailed.length)
       } catch (trackErr) {
         console.error('Tracking error (non-fatal):', trackErr)
       }
@@ -375,7 +355,7 @@ export default function ArrivalNotice() {
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `${sourceName || 'arrival_notices'}.zip`
+    a.download = `${sourceName || 'ubond_consol_notices'}.zip`
     a.click()
     URL.revokeObjectURL(url)
     files.forEach((f) => URL.revokeObjectURL(f.url))
@@ -390,24 +370,19 @@ export default function ArrivalNotice() {
 
   const generatePreview = async () => {
     const demoRow = {
-      awbFileName: '87359xxx1460',
-      awbNo: '87359xxx1460',
-      date: '21-07-2026',
-      mawbNo: '023 02961092',
-      igm: '3088962',
-      flight: 'FX5279T',
-      flightDate: '04-07-2026',
-      companyName: 'A R POLYMERS PRIVATE LIMITED',
+      awbFileName: '874515906172',
+      awbNo: '874515906172',
+      date: '21/07/26',
+      consigneeName: 'A R POLYMERS PRIVATE LIMITED',
       pieces: 5,
       weight: '22.00',
-      pcsCode: 'T',
-      origin: 'ORD',
-      destination: 'DEL',
       value: '44,490.60',
-      contents: 'POLYMER RESINS',
+      freight: '22,261.20',
+      currency: 'INR',
+      commitDate: '27/07/26',
     }
     try {
-      const pdfBytes = await generateArrivalNoticePdf(demoRow)
+      const pdfBytes = await generateUbondConsolPdf(demoRow)
       const blob = new Blob([pdfBytes], { type: 'application/pdf' })
       const url = URL.createObjectURL(blob)
       setPreviewUrl(url)
@@ -424,7 +399,7 @@ export default function ArrivalNotice() {
         <div className="bg-white rounded-3xl shadow-xl border border-slate-200 p-8 max-w-md w-full">
           <div className="mb-8 text-center">
             <img src="/fedex-logo-local.png" alt="FedEx Logo" className="h-14 mx-auto mb-6" />
-            <h1 className="text-3xl font-extrabold text-slate-800">Arrival Notice Generator</h1>
+            <h1 className="text-3xl font-extrabold text-slate-800">Ubond/Consol Notice Generator</h1>
             <p className="text-slate-500 mt-3 text-lg">Enter your details to get started</p>
           </div>
 
@@ -476,7 +451,7 @@ export default function ArrivalNotice() {
                 alt="FedEx Logo"
                 className="h-8 object-contain"
               />
-              <h1 className="text-lg font-bold tracking-tight hidden sm:block">Arrival Notice Generator</h1>
+              <h1 className="text-lg font-bold tracking-tight hidden sm:block">Ubond/Consol Notice Generator</h1>
             </div>
             <NavTabs />
             <div className="flex items-center gap-3">
@@ -506,7 +481,7 @@ export default function ArrivalNotice() {
         <div className="bg-white rounded-3xl shadow-xl border border-slate-200 overflow-hidden">
           <div className="bg-gradient-to-r from-slate-50 to-slate-100 px-8 py-5 border-b border-slate-200">
             <h2 className="text-xl font-bold text-slate-800">Upload Excel Sheet</h2>
-            <p className="text-slate-500 mt-1 text-sm">One row per shipment — MAWB No., AWB, Company Name, Pcs, WT(KG), ORG, DEST, VALUE, Contents etc.</p>
+            <p className="text-slate-500 mt-1 text-sm">One row per shipment — AWB Numbers, Consignee Name, PieceQty, KiloWgt, Value, Freight etc.</p>
           </div>
 
           <div className="p-8">
@@ -556,11 +531,11 @@ export default function ArrivalNotice() {
                 <div className="mt-3 p-4 bg-slate-50 border border-slate-200 rounded-xl overflow-x-auto">
                   <p className="text-xs font-bold text-slate-600 mb-2 uppercase tracking-wider">Column headers (row 1)</p>
                   <div className="text-xs text-slate-600 whitespace-nowrap font-mono mb-4 leading-relaxed">
-                    Date &bull; MAWB No. &bull; AWB &bull; Company Name &bull; Pcs Code &bull; Pcs &bull; WT(KG) &bull; ORG &bull; DEST &bull; CHWT(KG) &bull; VALUE &bull; Contents &bull; STATUS &bull; BROKER &bull; AGENT &bull; P. AGENT &bull; CEP &bull; 2nd CEP &bull; Cmit Date &bull; BSO
+                    Agent &bull; Loc &bull; Date &bull; AWB Numbers &bull; Consignee Name &bull; BSO &bull; Freight &bull; Currency &bull; End Result &bull; Data Type &bull; Mode &bull; PIN Code &bull; Standard Remarks &bull; FedEx Broker &bull; Contact &bull; ConsigneeEmailID &bull; Duty Bill Account &bull; Value &bull; PieceQty &bull; KiloWgt &bull; AD CODE &bull; InstructionCD &bull; Commit date &bull; Account &bull; SQL Account Customer Name &bull; Primary CEP &bull; Secondary CEP
                   </div>
                   <p className="text-xs font-bold text-slate-600 mb-2 uppercase tracking-wider">Sample row (row 2)</p>
                   <div className="text-xs text-slate-600 whitespace-nowrap font-mono leading-relaxed">
-                    04-Jul-26 &bull; MAWB-023 02961092 IGM- 3088962 Flight- FX5279t Dt - 04-07-2026 &bull; 8.73598E+11 &bull; ACPL EXPORTS PVT LTD &bull; T &bull; 1 &bull; 32.35 &bull; MVD &bull; DEL &bull; 32.35 &bull; 8552322.61 &bull; 0.999 FINENESS SILVER &bull; NFBRK &bull; 0 &bull; Surojit Biswas &bull; Surojit Biswas &bull; Neha Sambhyal &bull; Pooja Rajput &bull; 04-Jul-26 &bull; 02,40,54,16
+                    Ayush Saklani &bull; DEL &bull; 21/07/26 &bull; 874515906172 &bull; A- LITE EXPORT &bull; 02,28,40 &bull; 22261.2 &bull; INR &bull; CALLING &bull; UBOND-01 &bull; C &bull; 282007 &bull; ;; &bull; 0 &bull; 91 &bull; &bull; 0 &bull; 44490.6 &bull; 1 &bull; 22 &bull; &bull; &bull; 27/07/26 &bull; #N/A &bull; &bull; #NA &bull; #NA
                   </div>
                 </div>
               )}

@@ -1,8 +1,8 @@
 import './globals.css'
 
 export const metadata = {
-  title: 'FedEx TIFF to PDF Converter',
-  description: 'Convert your TIFF files to PDF easily',
+  title: 'FedEx Cargo Operations Toolkit',
+  description: 'Convert TIFF to PDF, generate Arrival Notices, and create Ubond/Consol notices',
 }
 
 export default function RootLayout({ children }) {

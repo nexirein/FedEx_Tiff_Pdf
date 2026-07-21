@@ -1,6 +1,6 @@
 # FedEx Cargo Operations Toolkit
 
-Two internal tools built to remove two separate manual, error-prone, paperwork bottlenecks in day-to-day cargo operations — a TIFF-to-PDF converter and a bulk Arrival Notice generator — sharing one login and one admin analytics dashboard.
+Three internal tools built to remove manual, error-prone, paperwork bottlenecks in day-to-day cargo operations — a TIFF-to-PDF converter, a bulk Arrival Notice generator, and a Ubond/Consol Notice generator — sharing one login and one admin analytics dashboard.
 
 ---
 
@@ -25,7 +25,7 @@ This had several concrete problems:
 - **No audit trail / consistency** — every agent wrote the email slightly differently, with no guarantee the same information appeared in the same place every time.
 
 ## Solution
-A modern web application with two tools sharing a single login, both fully client-side:
+A modern web application with three tools sharing a single login, all fully client-side:
 
 **TIFF to PDF Converter**
 - Unified upload for TIFF files, entire folders, or ZIP files containing TIFFs
@@ -33,10 +33,16 @@ A modern web application with two tools sharing a single login, both fully clien
 - Client-side conversion — files never leave your browser
 - Parallel batch processing with live per-file status
 
-**Arrival Notice Generator**
+**Arrival Notice Generator** (After IGM)
 - Upload an Excel sheet (one row per shipment)
 - Validates required fields per row up front and flags invalid rows before generation
 - Generates a formatted "Cargo Arrival Notice" PDF per valid row (dynamic IGM/AWB/Flight/Origin/Destination/Weight fields parsed from the sheet)
+- Downloads all generated PDFs as a single ZIP, each file named `<AWB>.pdf`
+
+**Ubond/Consol Notice Generator**
+- Upload an Excel sheet with Ubond/Consol shipment data
+- Validates required fields per row (AWB Numbers, Consignee Name, PieceQty, KiloWgt, Value, Freight, Currency)
+- Generates a formatted "Cargo Arrival Notice" PDF per valid row with an additional IGM status note
 - Downloads all generated PDFs as a single ZIP, each file named `<AWB>.pdf`
 
 Both tools share:
@@ -138,6 +144,25 @@ CREATE POLICY "Users can insert own AN conversions"
 CREATE POLICY "Admins can view all AN conversions"
     ON an_conversions FOR SELECT
     USING (auth.email() = 'admin@fedex.com');
+
+-- Create uc_conversions table (Ubond/Consol Notice Generator analytics)
+CREATE TABLE uc_conversions (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    rows_processed INT NOT NULL,
+    rows_failed INT NOT NULL DEFAULT 0,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+ALTER TABLE uc_conversions ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can insert own UC conversions"
+    ON uc_conversions FOR INSERT
+    WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Admins can view all UC conversions"
+    ON uc_conversions FOR SELECT
+    USING (auth.email() = 'admin@fedex.com');
 ```
 
 ### 3. Setup Authentication
@@ -205,9 +230,16 @@ Open [http://localhost:3000](http://localhost:3000) to see the app!
 - Valid rows are generated into individual "Cargo Arrival Notice" PDFs (batches of 25, 4 concurrent workers) and zipped for download, each file named `<AWB>.pdf` (matching the sheet's own AWB column)
 - Important operational details in the notice body (arrival city, warehouse name, working-day deadlines, Customs Holiday rules) are bolded for quick scanning
 
+### Ubond/Consol Notice Generator (`/ubond-consol`)
+- Upload a single `.xlsx`/`.xls` sheet with Ubond/Consol data columns (AWB Numbers, Consignee Name, PieceQty, KiloWgt, Value, Freight, Currency)
+- Each row is validated for required fields before any PDF work starts
+- Generates "Cargo Arrival Notice" PDFs with an additional highlighted note: "Please note that the shipment's IGM is not manifested yet, kindly monitor AIR IGM for the same"
+- Includes a clickable ICEGATE link for AIR IGM status checking
+- Downloads all generated PDFs as a single ZIP, each file named `<AWB>.pdf`
+
 ### For Admin (admin@fedex.com)
 - Access `/admin` dashboard
-- Toggle between "TIFF to PDF" and "Arrival Notice Generator" analytics
+- Toggle between "TIFF to PDF", "Arrival Notice Generator", and "Ubond/Consol Generator" analytics
 - View total number of conversions/uploads per tool
 - See date-wise analytics
 - Track which users converted/generated how much

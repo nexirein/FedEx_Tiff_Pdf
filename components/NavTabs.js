@@ -4,7 +4,8 @@ import { usePathname } from 'next/navigation'
 
 const TABS = [
   { href: '/', label: 'TIFF to PDF' },
-  { href: '/arrival-notice', label: 'Arrival Notice' },
+  { href: '/arrival-notice', label: 'Arrival Notice (After IGM)' },
+  { href: '/ubond-consol', label: 'Ubond/Consol' },
 ]
 
 export default function NavTabs() {
