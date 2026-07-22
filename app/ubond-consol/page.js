@@ -52,6 +52,16 @@ function formatValue(raw) {
   return num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
+const MONTH_ABBR = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
+function formatExcelDate(v, XLSX) {
+  if (typeof v === 'number') {
+    const dc = XLSX.SSF.parse_date_code(v)
+    if (dc) return `${String(dc.d).padStart(2, '0')}-${MONTH_ABBR[dc.m - 1]}-${String(dc.y).slice(-2)}`
+  }
+  return String(v ?? '').trim()
+}
+
 function validateRow(cells) {
   const date = cell(cells, COL.DATE)
   const awb = cell(cells, COL.AWB)
@@ -216,7 +226,8 @@ export default function UbondConsol() {
         .filter((r) => r.some((v) => String(v).trim() !== ''))
         .map((cells) => {
           const copy = [...cells]
-          copy[COL.DATE] = String(copy[COL.DATE] ?? '').trim()
+          copy[COL.DATE] = formatExcelDate(copy[COL.DATE], XLSX)
+          copy[COL.COMMIT_DATE] = formatExcelDate(copy[COL.COMMIT_DATE], XLSX)
           return copy
         })
 
